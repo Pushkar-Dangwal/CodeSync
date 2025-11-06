@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
+import ExecutionPanel from "../components/ExecutionPanel";
 import { language, cmtheme } from "../atoms";
 import { useRecoilState } from "recoil";
 import ACTIONS from "../actions/Actions";
@@ -28,15 +29,62 @@ const EditorPage: React.FC = () => {
   const [them, setThem] = useRecoilState(cmtheme);
 
   const [clients, setClients] = useState<ClientType[]>([]);
+  const [isExecutionPanelVisible, setIsExecutionPanelVisible] = useState(true);
+  const [currentCode, setCurrentCode] = useState<string>('');
+  const [editorHeight, setEditorHeight] = useState(60); // Percentage
+  const [isResizing, setIsResizing] = useState(false);
+  const [sharedTestCases, setSharedTestCases] = useState<Array<{
+    functionName: string;
+    inputs: string;
+    expected: string;
+    name: string;
+    userInputs?: string;
+    programInputs?: string;
+    expectedOutput?: string;
+  }>>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const codeRef = useRef<string | null>(null);
   const location = useLocation();
   const { roomId } = useParams<{ roomId: string }>();
   const reactNavigator = useNavigate();
+  const username = (location.state as LocationState)?.username;
+
+  // Load boilerplate code immediately when component mounts
+  useEffect(() => {
+    console.log('Loading initial boilerplate for language:', lang);
+    const boilerplate = getBoilerplateCode(lang);
+    if (boilerplate) {
+      console.log('Setting boilerplate code:', boilerplate.substring(0, 50) + '...');
+      codeRef.current = boilerplate;
+      setCurrentCode(boilerplate);
+    }
+  }, []); // Run only once on mount
+
+  // Load boilerplate when language changes
+  useEffect(() => {
+    console.log('Language changed to:', lang, 'Loading boilerplate...');
+    const boilerplate = getBoilerplateCode(lang);
+    if (boilerplate) {
+      console.log('Setting boilerplate for new language');
+      codeRef.current = boilerplate;
+      setCurrentCode(boilerplate);
+    }
+  }, [lang]); // Run when language changes
 
   useEffect(() => {
     const init = async () => {
+      // Prevent multiple socket connections
+      if (socketRef.current && socketRef.current.connected) {
+        return;
+      }
+
+      // Disconnect any existing socket first
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+
       socketRef.current = await initSocket();
       socketRef.current.on("connect_error", (err) => handleErrors(err));
       socketRef.current.on("connect_failed", (err) => handleErrors(err));
@@ -49,22 +97,43 @@ const EditorPage: React.FC = () => {
 
       socketRef.current.emit(ACTIONS.JOIN, {
         roomId,
-        username: (location.state as LocationState)?.username,
+        username,
       });
 
       // Listening for joined event
       socketRef.current.on(
         ACTIONS.JOINED,
-        ({ clients, username, socketId }: { clients: ClientType[], username: string, socketId: string }) => {
-          if (username !== (location.state as LocationState)?.username) {
-            toast.success(`${username} joined the room.`);
-            console.log(`${username} joined`);
+        ({ clients, username: joinedUsername, socketId }: { clients: ClientType[], username: string, socketId: string }) => {
+          if (joinedUsername !== username) {
+            toast.success(`${joinedUsername} joined the room.`);
+            console.log(`${joinedUsername} joined`);
           }
           setClients(clients);
-          socketRef.current?.emit(ACTIONS.SYNC_CODE, {
-            code: codeRef.current,
-            socketId,
-          });
+          
+          // Only sync code if we have meaningful content, otherwise let new user keep their boilerplate
+          const codeToSync = codeRef.current && codeRef.current.trim() !== '' ? codeRef.current : null;
+          if (codeToSync) {
+            socketRef.current?.emit(ACTIONS.SYNC_CODE, {
+              code: codeToSync,
+              socketId,
+            });
+          }
+
+          // Sync current language to new user
+          if (lang) {
+            socketRef.current?.emit(ACTIONS.SYNC_LANGUAGE, {
+              language: lang,
+              socketId,
+            });
+          }
+
+          // Sync test cases to new user
+          if (sharedTestCases.length > 0) {
+            socketRef.current?.emit(ACTIONS.SYNC_TEST_CASES, {
+              testCases: sharedTestCases,
+              socketId,
+            });
+          }
         }
       );
 
@@ -75,14 +144,173 @@ const EditorPage: React.FC = () => {
           return prev.filter((client) => client.socketId !== socketId);
         });
       });
+
+      // Listening for language changes
+      socketRef.current.on(ACTIONS.LANGUAGE_CHANGE, ({ language }: { language: string }) => {
+        console.log('Received language change:', language);
+        setLang(language);
+        toast.info(`Language changed to ${language}`);
+      });
+
+      // Listening for test case changes
+      socketRef.current.on(ACTIONS.TEST_CASES_CHANGE, ({ testCases }: { testCases: any[] }) => {
+        console.log('Received test cases change:', testCases);
+        setSharedTestCases(testCases);
+        toast.info('Test cases updated by another user');
+      });
     };
+    
+    // Load boilerplate first, then initialize socket
+    const boilerplate = getBoilerplateCode(lang);
+    if (boilerplate) {
+      console.log('Setting initial boilerplate before socket init');
+      codeRef.current = boilerplate;
+      setCurrentCode(boilerplate);
+    }
+    
     init();
+    
+    // Emit boilerplate to socket after connection is established
+    setTimeout(() => {
+      if (socketRef.current && boilerplate) {
+        socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+          roomId,
+          code: boilerplate
+        });
+      }
+    }, 500); // Short delay just for socket connection
+    
     return () => {
-      socketRef.current?.off(ACTIONS.JOINED);
-      socketRef.current?.off(ACTIONS.DISCONNECTED);
-      socketRef.current?.disconnect();
+      if (socketRef.current) {
+        socketRef.current.off(ACTIONS.JOINED);
+        socketRef.current.off(ACTIONS.DISCONNECTED);
+        socketRef.current.off(ACTIONS.LANGUAGE_CHANGE);
+        socketRef.current.off(ACTIONS.TEST_CASES_CHANGE);
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, []);
+  }, [roomId, username]);
+
+  // Add keyboard shortcuts for code execution
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+Enter or Cmd+Enter to run code
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        if (currentCode.trim() && isExecutionPanelVisible) {
+          // Trigger execution by dispatching a custom event
+          const executionEvent = new CustomEvent('executeCode', { detail: { code: currentCode } });
+          window.dispatchEvent(executionEvent);
+        }
+      }
+      
+      // Ctrl+Shift+E or Cmd+Shift+E to toggle execution panel
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'E') {
+        event.preventDefault();
+        setIsExecutionPanelVisible(!isExecutionPanelVisible);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentCode, isExecutionPanelVisible]);
+
+  // Handle resize functionality
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const container = document.querySelector('.editorLayout') as HTMLElement;
+      if (!container) return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const newHeight = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+      
+      // Limit between 20% and 80%
+      const clampedHeight = Math.max(20, Math.min(80, newHeight));
+      setEditorHeight(clampedHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  const handleCodeChange = (code: string) => {
+    console.log("on code change" + code);
+    codeRef.current = code;
+    setCurrentCode(code);
+  };
+
+  // Handle test case updates from ExecutionPanel
+  const handleTestCasesChange = (testCases: typeof sharedTestCases) => {
+    console.log('Updating shared test cases:', testCases);
+    setSharedTestCases(testCases);
+    
+    // Emit test cases change to other users
+    if (socketRef.current) {
+      console.log('Emitting test cases to other users');
+      socketRef.current.emit(ACTIONS.TEST_CASES_CHANGE, {
+        roomId,
+        testCases
+      });
+    }
+  };
+
+  const getBoilerplateCode = (language: string): string => {
+    switch (language) {
+      case 'javascript':
+        return `// JavaScript Code
+function solve() {
+    // Write your solution here
+    return "Hello World!";
+}
+
+console.log(solve());`;
+      case 'python':
+        return `# Python Code
+def solve():
+    # Write your solution here
+    return "Hello World!"
+
+print(solve())`;
+      case 'java':
+        return `import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        
+        // Write your solution here
+        System.out.println("Hello World!");
+        
+        sc.close();
+    }
+}`;
+      default:
+        return '';
+    }
+  };
+
+
 
   async function copyRoomId() {
     try {
@@ -122,33 +350,68 @@ const EditorPage: React.FC = () => {
           <select
             value={lang}
             onChange={(e) => {
-              setLang(e.target.value);
+              const newLanguage = e.target.value;
+              console.log('Manual language change to:', newLanguage);
+              setLang(newLanguage);
+              
+              // Emit language change to other users
+              if (socketRef.current) {
+                console.log('Emitting language change to other users');
+                socketRef.current.emit(ACTIONS.LANGUAGE_CHANGE, {
+                  roomId,
+                  language: newLanguage
+                });
+              }
+              
+              // Automatically load boilerplate code for the new language
+              const boilerplate = getBoilerplateCode(newLanguage);
+              if (boilerplate) {
+                console.log('Loading boilerplate for manual language change:', boilerplate.substring(0, 30) + '...');
+                // Always load boilerplate when language changes - immediately update UI
+                codeRef.current = boilerplate;
+                setCurrentCode(boilerplate);
+                
+                // Emit code change after a short delay to ensure it doesn't conflict
+                setTimeout(() => {
+                  if (socketRef.current) {
+                    console.log('Emitting boilerplate code to other users');
+                    socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+                      roomId,
+                      code: boilerplate
+                    });
+                  }
+                }, 100);
+              }
             }}
             className="seLang"
           >
-            <option value="clike">C / C++ / C# / Java</option>
-            <option value="css">CSS</option>
-            <option value="dart">Dart</option>
-            <option value="django">Django</option>
-            <option value="dockerfile">Dockerfile</option>
-            <option value="go">Go</option>
-            <option value="htmlmixed">HTML-mixed</option>
             <option value="javascript">JavaScript</option>
-            <option value="jsx">JSX</option>
-            <option value="markdown">Markdown</option>
-            <option value="php">PHP</option>
             <option value="python">Python</option>
-            <option value="r">R</option>
-            <option value="rust">Rust</option>
-            <option value="ruby">Ruby</option>
-            <option value="sass">Sass</option>
-            <option value="shell">Shell</option>
-            <option value="sql">SQL</option>
-            <option value="swift">Swift</option>
-            <option value="xml">XML</option>
-            <option value="yaml">yaml</option>
+            <option value="java">Java</option>
           </select>
         </label>
+
+        <button
+          className="boilerplateBtn"
+          onClick={() => {
+            const boilerplate = getBoilerplateCode(lang);
+            if (boilerplate) {
+              codeRef.current = boilerplate;
+              setCurrentCode(boilerplate);
+              
+              // Emit to socket if connected
+              if (socketRef.current) {
+                socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+                  roomId,
+                  code: boilerplate
+                });
+              }
+            }
+          }}
+          title="Load boilerplate code for current language"
+        >
+          Load Boilerplate
+        </button>
 
         <label>
           Select Theme:
@@ -238,14 +501,49 @@ const EditorPage: React.FC = () => {
       </div>
 
       <div className="editorWrap">
-        <Editor
-          socketRef={socketRef}
-          roomId={roomId}
-          onCodeChange={(code: string) => {
-            console.log("on code change" + code);
-            codeRef.current = code;
-          }}
-        />
+        <div className="editorHeader">
+          <button 
+            className="execution-toggle-btn"
+            onClick={() => setIsExecutionPanelVisible(!isExecutionPanelVisible)}
+            title={`${isExecutionPanelVisible ? 'Hide' : 'Show'} execution panel (Ctrl+Shift+E)`}
+          >
+            {isExecutionPanelVisible ? '🔽 Hide Execution' : '🔼 Show Execution'}
+          </button>
+        </div>
+        <div className="editorLayout resizable-layout">
+          <div 
+            className="editorContainer"
+            style={{ height: isExecutionPanelVisible ? `${editorHeight}%` : '100%' }}
+          >
+            <Editor
+              socketRef={socketRef}
+              roomId={roomId}
+              onCodeChange={handleCodeChange}
+            />
+          </div>
+          {isExecutionPanelVisible && (
+            <>
+              <div 
+                className="resize-handle"
+                onMouseDown={handleMouseDown}
+              >
+                <div className="resize-line"></div>
+              </div>
+              <div 
+                className="executionContainer"
+                style={{ height: `${100 - editorHeight}%` }}
+              >
+                <ExecutionPanel
+                  code={currentCode}
+                  isVisible={isExecutionPanelVisible}
+                  onToggle={() => setIsExecutionPanelVisible(!isExecutionPanelVisible)}
+                  sharedTestCases={sharedTestCases}
+                  onTestCasesChange={handleTestCasesChange}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

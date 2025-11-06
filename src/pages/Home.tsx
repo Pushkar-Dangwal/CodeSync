@@ -79,8 +79,7 @@ const Home: React.FC = () => {
             </div>
             <footer>
                 <h4>
-                    Build by &nbsp;
-                    <a href="https://github.com/Mohitur669" target="_blank" rel="noopener noreferrer">Mohd Mohitur Rahaman</a>
+                    
                 </h4>
             </footer>
         </div>

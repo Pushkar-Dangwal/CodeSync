@@ -203,21 +203,184 @@ footer a:hover {
     margin-top: 20px;
 }
 
+.editorWrap {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.editorHeader {
+    background: #1c1e29;
+    border-bottom: 1px solid #424242;
+    padding: 8px 16px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.execution-toggle-btn {
+    background: #0096FF;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease-in-out;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.execution-toggle-btn:hover {
+    background: #87CEEB;
+    color: black;
+}
+
+.editorLayout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editorLayout.resizable-layout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editorLayout.with-execution {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editorLayout.full-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editorContainer {
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .CodeMirror {
     font-family: 'Cascadia Code', sans-serif !important;
-    min-height: calc(100vh - 20px);
-    width: calc(100vw - 180px);
+    height: 100% !important;
+    width: 100% !important;
     font-size: 16px;
     line-height: 1.6;
     padding-top: 20px;
+    flex: 1;
 }
 
 @media screen and (min-width: 480px) {
     .CodeMirror {
-        min-height: calc(100vh - 20px);
-        width: calc(100vw - 230px);
+        width: 100% !important;
         font-size: 16px;
         line-height: 1.6;
         padding-top: 20px;
     }
+}/* Re
+sponsive adjustments for editor layout */
+@media screen and (max-width: 768px) {
+    .editorHeader {
+        padding: 6px 12px;
+    }
+    
+    .editorLayout.with-execution {
+        grid-template-rows: 1fr 35vh;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .editorLayout.with-execution {
+        grid-template-rows: 1fr 30vh;
+    }
+}/* R
+esizable Editor Layout */
+.resizable-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.executionContainer {
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.resize-handle {
+  height: 4px;
+  background: #424242;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+}
+
+.resize-handle:hover {
+  background: #0096FF;
+}
+
+.resize-line {
+  width: 40px;
+  height: 2px;
+  background: #666;
+  border-radius: 1px;
+}
+
+.resize-handle:hover .resize-line {
+  background: #fff;
+}
+
+/* Remove gaps between editor and execution panel */
+.editorLayout {
+  gap: 0;
+}
+
+.editorLayout .editorContainer,
+.editorLayout .executionContainer {
+  margin: 0;
+  padding: 0;
+}
+
+/* Make execution panel fill its container */
+.execution-panel {
+  height: 100%;
+  max-height: none;
+  min-height: auto;
+}
+
+/* Ensure proper scrolling in execution panel */
+.execution-content {
+  height: calc(100% - 50px); /* Account for header */
+  overflow-y: auto;
+}
+
+.results-container {
+  flex: 1;
+  overflow-y: auto;
+  max-height: none;
 }

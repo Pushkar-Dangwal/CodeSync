@@ -82,6 +82,7 @@ import "codemirror/mode/dockerfile/dockerfile";
 import "codemirror/mode/go/go";
 import "codemirror/mode/htmlmixed/htmlmixed";
 import "codemirror/mode/javascript/javascript";
+import "codemirror/mode/clike/clike"; // For Java
 import "codemirror/mode/jsx/jsx";
 import "codemirror/mode/markdown/markdown";
 import "codemirror/mode/php/php";
@@ -130,7 +131,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange }) => {
       editorRef.current = Codemirror.fromTextArea(
         document.getElementById("realtimeEditor") as HTMLTextAreaElement,
         {
-          mode: { name: lang },
+          mode: { name: lang === 'java' ? 'text/x-java' : lang },
           theme: editorTheme,
           autoCloseTags: true,
           autoCloseBrackets: true,
@@ -171,8 +172,12 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange }) => {
   useEffect(() => {
     if (socketRef.current) {
       socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
-        if (code !== null) {
-          editorRef.current.setValue(code);
+        if (code !== null && code !== undefined) {
+          // Don't override existing content with empty code
+          const currentValue = editorRef.current.getValue();
+          if (code.trim() !== '' || currentValue.trim() === '') {
+            editorRef.current.setValue(code);
+          }
         }
       });
     }
