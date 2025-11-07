@@ -54,7 +54,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .execution-controls {
@@ -171,6 +172,8 @@
   border: 1px solid #424242;
   border-radius: 5px;
   background: #1c1e29;
+  min-height: 200px;
+  max-height: 100%;
 }
 
 .no-results {
@@ -943,8 +946,7 @@ Test case creator styles */
   .toggle-creator-btn {
     align-self: flex-end;
   }
-}/
-* Boilerplate button styles */
+}/* Boilerplate button styles */
 .boilerplateBtn {
   background: #4aed88;
   color: #000;
@@ -1064,8 +1066,7 @@ n input container styles */
 .clear-stdin-btn:hover {
   background: #ff5252;
   transform: scale(1.1);
-}/
-* Python input hint styles */
+}/* Python input hint styles */
 .python-input-hint {
   margin-top: 8px;
   padding: 8px;

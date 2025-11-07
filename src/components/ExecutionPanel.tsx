@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import TestCaseInput from './TestCaseInput';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './ExecutionPanel.css';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
@@ -84,24 +83,58 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
     expectedOutput: ''
   });
   const [stdinInput, setStdinInput] = useState('');
+  const isUpdatingFromSocket = useRef(false);
 
-  // Sync shared test cases with local state
+  // Sync shared test cases with local state (from socket)
   useEffect(() => {
     if (sharedTestCases.length > 0) {
       console.log('Syncing shared test cases to local state:', sharedTestCases);
+      isUpdatingFromSocket.current = true;
       setCustomTestCases(sharedTestCases);
+      setTimeout(() => {
+        isUpdatingFromSocket.current = false;
+      }, 100);
     }
   }, [sharedTestCases]);
 
-  // Notify parent when local test cases change
+  // Notify parent when local test cases change (but not when updating from socket)
   useEffect(() => {
-    if (onTestCasesChange && customTestCases.length > 0) {
+    if (onTestCasesChange && customTestCases.length > 0 && !isUpdatingFromSocket.current) {
       console.log('Notifying parent of test case changes:', customTestCases);
       onTestCasesChange(customTestCases);
     }
   }, [customTestCases, onTestCasesChange]);
 
   const MAX_RESULTS = 10; // Limit history to prevent memory issues
+
+  // Stable callbacks for test case input changes
+  const handleTestCaseNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, name: e.target.value }));
+  }, []);
+
+  const handleProgramInputsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, programInputs: e.target.value }));
+  }, []);
+
+  const handleExpectedOutputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, expectedOutput: e.target.value }));
+  }, []);
+
+  const handleFunctionNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, functionName: e.target.value }));
+  }, []);
+
+  const handleFunctionInputsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, inputs: e.target.value }));
+  }, []);
+
+  const handleExpectedChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTestCase(prev => ({ ...prev, expected: e.target.value }));
+  }, []);
+
+  const handleStdinInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setStdinInput(e.target.value);
+  }, []);
 
   const parseError = (error: string): ExecutionError => {
     // Try to extract line and column numbers from error message
@@ -238,25 +271,28 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                 // Python/Java: Only program input/output testing
                 <>
                   <div className="form-row">
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Test name (optional)"
                       value={newTestCase.name}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, name: value }))}
+                      onChange={handleTestCaseNameChange}
                       className="form-input"
                     />
                   </div>
                   <div className="form-row">
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Program inputs (e.g., 1,3,5)"
                       value={newTestCase.programInputs}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, programInputs: value }))}
+                      onChange={handleProgramInputsChange}
                       className="form-input"
                       title="Inputs exactly as user would type them"
                     />
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Expected program output"
                       value={newTestCase.expectedOutput}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, expectedOutput: value }))}
+                      onChange={handleExpectedOutputChange}
                       className="form-input"
                       title="Expected output from the entire program"
                       required
@@ -267,31 +303,35 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                 // JavaScript: Function testing
                 <>
                   <div className="form-row">
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Test name (optional)"
                       value={newTestCase.name}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, name: value }))}
+                      onChange={handleTestCaseNameChange}
                       className="form-input"
                     />
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Function name"
                       value={newTestCase.functionName}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, functionName: value }))}
+                      onChange={handleFunctionNameChange}
                       className="form-input"
                       required
                     />
                   </div>
                   <div className="form-row">
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Function inputs (e.g., 1, 2, 'hello')"
                       value={newTestCase.inputs}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, inputs: value }))}
+                      onChange={handleFunctionInputsChange}
                       className="form-input"
                     />
-                    <TestCaseInput
+                    <input
+                      type="text"
                       placeholder="Expected output"
                       value={newTestCase.expected}
-                      onChange={(value) => setNewTestCase(prev => ({ ...prev, expected: value }))}
+                      onChange={handleExpectedChange}
                       className="form-input"
                       required
                     />
@@ -454,7 +494,11 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
       name: newTestCase.name || `Test ${customTestCases.length + 1}`
     };
 
-    setCustomTestCases(prev => [...prev, testCase]);
+    setCustomTestCases(prev => {
+      const updated = [...prev, testCase];
+      console.log('Added test case. Total test cases:', updated.length, updated);
+      return updated;
+    });
     setNewTestCase({
       functionName: '',
       inputs: '',
@@ -471,14 +515,20 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
   };
 
   const runCustomTests = async () => {
+    console.log('runCustomTests called. Test cases:', customTestCases.length);
     if (customTestCases.length === 0) {
+      console.log('No test cases to run');
       return;
     }
 
+    console.log('Running custom tests for language:', currentLanguage);
     setIsRunning(true);
     setTestResults(null);
 
     try {
+      console.log('Current language:', currentLanguage);
+      console.log('Custom test cases:', customTestCases);
+      
       if (currentLanguage === 'python') {
         // Python: Only program tests
         const programTests: any[] = [];
@@ -548,6 +598,83 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
           parseErrors: []
         };
 
+        setTestResults(testSuiteResult);
+      } else if (currentLanguage === 'java') {
+        // Java: Only program tests (same as Python)
+        const programTests: any[] = [];
+        
+        customTestCases.forEach((tc, _index) => {
+          if (tc.expectedOutput) {
+            programTests.push({
+              name: tc.name || `Program Test ${programTests.length + 1}`,
+              programInputs: tc.programInputs || '',
+              expectedOutput: tc.expectedOutput,
+              line: _index + 1
+            });
+          }
+        });
+
+        console.log('Java program tests:', programTests);
+
+        // Run program tests
+        const programResults: any[] = [];
+        for (const programTest of programTests) {
+          const startTime = performance.now();
+          try {
+            const formattedStdin = programTest.programInputs || '';
+            console.log('Executing Java code with input:', formattedStdin);
+            const executionResult = await codeRunner.executeCodeWithLanguage(code, currentLanguage, formattedStdin);
+            const executionTime = performance.now() - startTime;
+            
+            console.log('Java execution result:', executionResult);
+            
+            // Compare entire output
+            const actualOutput = executionResult.output.trim();
+            const expectedOutput = programTest.expectedOutput.trim();
+            const passed = actualOutput === expectedOutput;
+            
+            programResults.push({
+              testCase: {
+                name: programTest.name,
+                input: [programTest.programInputs || 'no input'],
+                expected: expectedOutput,
+                functionName: 'program',
+                line: programTest.line
+              },
+              passed,
+              actual: actualOutput,
+              executionTime,
+              output: executionResult.output
+            });
+          } catch (error) {
+            const executionTime = performance.now() - startTime;
+            console.error('Java execution error:', error);
+            programResults.push({
+              testCase: {
+                name: programTest.name,
+                input: [programTest.programInputs || 'no input'],
+                expected: programTest.expectedOutput,
+                functionName: 'program',
+                line: programTest.line
+              },
+              passed: false,
+              error: error instanceof Error ? error.message : String(error),
+              executionTime
+            });
+          }
+        }
+
+        const testSuiteResult: TestSuiteResult = {
+          results: programResults,
+          totalTests: programResults.length,
+          passedTests: programResults.filter(r => r.passed).length,
+          failedTests: programResults.filter(r => !r.passed).length,
+          totalExecutionTime: programResults.reduce((sum, r) => sum + r.executionTime, 0),
+          hasParseErrors: false,
+          parseErrors: []
+        };
+
+        console.log('Java test suite result:', testSuiteResult);
         setTestResults(testSuiteResult);
       } else {
         // JavaScript: Function tests
@@ -716,10 +843,11 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
               <label className="stdin-label">
                 {currentLanguage === 'java' ? 'Java' : 'Python'} Inputs (for input calls):
                 <div className="stdin-input-container">
-                  <TestCaseInput
+                  <input
+                    type="text"
                     placeholder="Enter inputs separated by commas (e.g., 5, hello, 3.14)"
                     value={stdinInput}
-                    onChange={setStdinInput}
+                    onChange={handleStdinInputChange}
                     className="stdin-input"
                     title="Inputs that will be provided to input() function calls"
                   />

@@ -113,9 +113,10 @@ interface EditorProps {
   socketRef: React.MutableRefObject<Socket | null>;
   roomId: string | undefined;
   onCodeChange: (code: string) => void;
+  initialCode?: string;
 }
 
-const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange }) => {
+const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, initialCode = '' }) => {
   const editorRef = useRef<any>(null);
   const lang = useRecoilValue(language);
   const editorTheme = useRecoilValue(cmtheme);
@@ -139,6 +140,12 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange }) => {
         }
       );
 
+      // Set initial code value if provided
+      if (initialCode) {
+        console.log('Setting initial code in editor:', initialCode.substring(0, 30) + '...');
+        editorRef.current.setValue(initialCode);
+      }
+
       editorRef.current.on("change", (instance: any, changes: any) => {
         const { origin } = changes;
         const code = instance.getValue();
@@ -161,7 +168,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange }) => {
         editorRef.current = null;
       }
     };
-  }, [lang]);
+  }, [lang]); // Only reinitialize on language change
 
   useEffect(() => {
     if (editorRef.current) {

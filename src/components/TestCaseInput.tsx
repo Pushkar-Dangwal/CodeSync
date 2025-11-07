@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 interface TestCaseInputProps {
   value: string;
@@ -17,25 +17,28 @@ const TestCaseInput: React.FC<TestCaseInputProps> = ({
   title,
   required = false
 }) => {
-  // Use internal state to prevent parent re-renders from affecting input
-  const [internalValue, setInternalValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cursorPositionRef = useRef<number>(0);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setInternalValue(newValue);
-    onChange(newValue);
+    // Save cursor position before update
+    cursorPositionRef.current = e.target.selectionStart || 0;
+    onChange(e.target.value);
   };
 
-  // Sync with external value when it changes
-  React.useEffect(() => {
-    setInternalValue(value);
+  // Restore cursor position after render
+  useEffect(() => {
+    if (inputRef.current && document.activeElement === inputRef.current) {
+      inputRef.current.setSelectionRange(cursorPositionRef.current, cursorPositionRef.current);
+    }
   }, [value]);
 
   return (
     <input
+      ref={inputRef}
       type="text"
       placeholder={placeholder}
-      value={internalValue}
+      value={value}
       onChange={handleChange}
       className={className}
       title={title}

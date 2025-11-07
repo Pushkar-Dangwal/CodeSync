@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -149,14 +149,14 @@ const EditorPage: React.FC = () => {
       socketRef.current.on(ACTIONS.LANGUAGE_CHANGE, ({ language }: { language: string }) => {
         console.log('Received language change:', language);
         setLang(language);
-        toast.info(`Language changed to ${language}`);
+        toast.success(`Language changed to ${language}`);
       });
 
       // Listening for test case changes
       socketRef.current.on(ACTIONS.TEST_CASES_CHANGE, ({ testCases }: { testCases: any[] }) => {
         console.log('Received test cases change:', testCases);
         setSharedTestCases(testCases);
-        toast.info('Test cases updated by another user');
+        toast.success('Test cases updated by another user');
       });
     };
     
@@ -261,7 +261,7 @@ const EditorPage: React.FC = () => {
   };
 
   // Handle test case updates from ExecutionPanel
-  const handleTestCasesChange = (testCases: typeof sharedTestCases) => {
+  const handleTestCasesChange = useCallback((testCases: typeof sharedTestCases) => {
     console.log('Updating shared test cases:', testCases);
     setSharedTestCases(testCases);
     
@@ -273,7 +273,7 @@ const EditorPage: React.FC = () => {
         testCases
       });
     }
-  };
+  }, [roomId]);
 
   const getBoilerplateCode = (language: string): string => {
     switch (language) {
@@ -335,7 +335,7 @@ public class Main {
       <div className="aside">
         <div className="asideInner">
           <div className="logo">
-            <img className="logoImage" src="/logo.png" alt="CodeSync" />
+            CodeSync
           </div>
           <h3>Connected</h3>
           <div className="clientsList">
@@ -519,6 +519,7 @@ public class Main {
               socketRef={socketRef}
               roomId={roomId}
               onCodeChange={handleCodeChange}
+              initialCode={currentCode}
             />
           </div>
           {isExecutionPanelVisible && (
